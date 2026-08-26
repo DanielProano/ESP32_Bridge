@@ -2,6 +2,8 @@ idf_component_register(
     SRCS
         "main.c"
         "bridge.c"
+        "../Dragonfly_Protocol/protocol_codec.c"
+        "../Dragonfly_Protocol/crc.c"
     INCLUDE_DIRS
         "../include"
         "../Dragonfly_Protocol"
@@ -11,4 +13,5 @@ idf_component_register(
         esp_netif
         nvs_flash
         esp_driver_uart
+        lwip
 )
