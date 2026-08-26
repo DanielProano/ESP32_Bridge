@@ -38,10 +38,10 @@
 
 #define BRIDGE_TASK_STACK_SIZE      4096
 
-#define CRSF_RX_TASK_PRIORITY       6
-#define STM32_RX_TASK_PRIORITY      5
-#define STM32_TX_TASK_PRIORITY      4
-#define TCP_SERVER_TASK_PRIORITY    3
+#define CRSF_TO_STM32_TASK_PRIORITY   6
+#define STM32_TO_LAPTOP_TASK_PRIORITY 5
+#define QUEUE_TO_STM32_TASK_PRIORITY  4
+#define TCP_SERVER_TASK_PRIORITY      3
 
 typedef struct {
     RC_CHANNELS_PAYLOAD data;
@@ -65,9 +65,9 @@ void wifi_init(void);
 void uart_init_stm32(void);
 void uart_init_crsf(void);
 void tcp_server_task(void *pvParameters);
-void stm32_tx_task(void *pvParameters);
-void stm32_rx_task(void *pvParameters);
-void crsf_rx_task(void *pvParameters);
+void queue_to_stm32_task(void *pvParameters);
+void stm32_to_laptop_task(void *pvParameters);
+void crsf_to_stm32_task(void *pvParameters);
 void bridge_to_stm32(uint8_t msg_id, const uint8_t *payload, uint8_t payload_len);
 void bridge_to_laptop(const FRAME *frame);
 void crsf_to_stm32(const RC_CHANNELS_PAYLOAD *rc);

@@ -13,8 +13,8 @@ void app_main(void)
     g_cmd_queue = xQueueCreate(LAPTOP_QUEUE_DEPTH, sizeof(STM32_CMD));
     g_client_sock_mutex = xSemaphoreCreateMutex();
 
-    xTaskCreate(crsf_rx_task, "crsf_rx", BRIDGE_TASK_STACK_SIZE, NULL, CRSF_RX_TASK_PRIORITY, NULL);
-    xTaskCreate(stm32_rx_task, "stm32_rx", BRIDGE_TASK_STACK_SIZE, NULL, STM32_RX_TASK_PRIORITY, NULL);
-    xTaskCreate(stm32_tx_task, "stm32_tx", BRIDGE_TASK_STACK_SIZE, NULL, STM32_TX_TASK_PRIORITY, NULL);
+    xTaskCreate(crsf_to_stm32_task, "crsf_to_stm32", BRIDGE_TASK_STACK_SIZE, NULL, CRSF_TO_STM32_TASK_PRIORITY, NULL);
+    xTaskCreate(stm32_to_laptop_task, "stm32_to_laptop", BRIDGE_TASK_STACK_SIZE, NULL, STM32_TO_LAPTOP_TASK_PRIORITY, NULL);
+    xTaskCreate(queue_to_stm32_task, "queue_to_stm32", BRIDGE_TASK_STACK_SIZE, NULL, QUEUE_TO_STM32_TASK_PRIORITY, NULL);
     xTaskCreate(tcp_server_task, "tcp_server", BRIDGE_TASK_STACK_SIZE, NULL, TCP_SERVER_TASK_PRIORITY, NULL);
 }
