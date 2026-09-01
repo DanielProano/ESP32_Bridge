@@ -1,4 +1,5 @@
 #include "bridge.h"
+#include "oled.h"
 #include "freertos/task.h"
 #include "esp_log.h"
 
@@ -9,6 +10,7 @@ void app_main(void)
     wifi_init();
     uart_init_stm32();
     uart_init_crsf();
+    oled_init();
 
     g_cmd_queue = xQueueCreate(LAPTOP_QUEUE_DEPTH, sizeof(STM32_CMD));
     g_client_sock_mutex = xSemaphoreCreateMutex();

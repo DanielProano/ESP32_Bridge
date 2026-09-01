@@ -2,6 +2,7 @@ idf_component_register(
     SRCS
         "main.c"
         "bridge.c"
+        "oled.c"
         "../Dragonfly_Protocol/protocol_codec.c"
         "../Dragonfly_Protocol/crc.c"
     INCLUDE_DIRS
@@ -11,7 +12,11 @@ idf_component_register(
         esp_wifi
         esp_event
         esp_netif
+        esp_timer
         nvs_flash
         esp_driver_uart
+        esp_driver_i2c
+        esp_rom
         lwip
+        u8g2
 )

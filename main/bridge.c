@@ -1,8 +1,11 @@
 #include "bridge.h"
+#include "oled.h"
 #include "protocol_codec.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
 #include "esp_netif.h"
+#include "esp_timer.h"
+#include "esp_system.h"
 #include "nvs_flash.h"
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -20,6 +23,10 @@ CRSF_SLOT g_crsf_slot = {0};
 SemaphoreHandle_t g_crsf_mutex = NULL;
 SemaphoreHandle_t g_stm32_uart_mutex = NULL;
 SemaphoreHandle_t g_client_sock_mutex = NULL;
+
+static volatile uint32_t g_stm32_frames_ok = 0;
+static volatile uint32_t g_stm32_frames_err = 0;
+static volatile TickType_t g_stm32_last_frame_ticks = 0;
 
 void wifi_init(void)
 {
@@ -70,7 +77,7 @@ void uart_init_stm32(void)
         .parity    = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
         // Flow control allows receiver to pause sender,
-        //something we don't need
+        // something we don't need
         .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
         .source_clk = UART_SCLK_DEFAULT,
     };
@@ -203,27 +210,35 @@ void stm32_to_laptop_task(void *pvParameters)
         uint8_t header_info = 4;
 
         if (uart_read_bytes(STM32_UART, &buffer[1], header_info, pdMS_TO_TICKS(STM32_UART_READ_TIMEOUT_MS)) != 4) {
+            g_stm32_frames_err++;
             continue;
         }
 
         uint8_t payload_len = buffer[4];
 
         if (payload_len > PAYLOAD_MAX_SIZE) {
+            g_stm32_frames_err++;
             continue;
         }
 
         size_t remaining = (size_t) payload_len + sizeof(uint16_t);
         if (uart_read_bytes(STM32_UART, &buffer[5], remaining, pdMS_TO_TICKS(STM32_UART_READ_TIMEOUT_MS)) != (int) remaining) {
+            g_stm32_frames_err++;
             continue;
         }
 
         FRAME frame;
 
         if (protocol_frame_decode(&frame, buffer, sizeof(uint8_t) + header_info + remaining) < 0) {
+            g_stm32_frames_err++;
             continue;
         }
 
+        g_stm32_frames_ok++;
+        g_stm32_last_frame_ticks = xTaskGetTickCount();
+
         bridge_to_laptop(&frame);
+        oled_show_frame(&frame);
     }
 }
 
@@ -266,42 +281,77 @@ static int recv_exact(int sock, uint8_t *buffer, size_t len)
     return (int) received;
 }
 
-typedef enum {
-    OK,
-    CONTINUE,
-    BREAK,
-} TCP_CLIENT_STATUS;
+static void esp32_send_status(int client_sock, uint8_t sequence)
+{
+    wifi_sta_list_t sta_list = {0};
+    esp_wifi_ap_get_sta_list(&sta_list);
 
-static TCP_CLIENT_STATUS tcp_server_read_client(int client_sock, uint8_t *buffer) {
+    TickType_t now = xTaskGetTickCount();
+    uint32_t frame_age_ms = (uint32_t) ((now - g_stm32_last_frame_ticks) * portTICK_PERIOD_MS);
+
+    ESP32_STATUS_PAYLOAD status = {
+        .uptime_ms               = (uint32_t) (esp_timer_get_time() / 1000),
+        .free_heap_bytes         = esp_get_free_heap_size(),
+        .wifi_client_count       = (uint8_t) sta_list.num,
+        .stm32_link_up           = (g_stm32_frames_ok > 0) && (frame_age_ms < STM32_LINK_TIMEOUT_MS),
+        .stm32_last_frame_age_ms = frame_age_ms,
+        .stm32_frames_ok         = g_stm32_frames_ok,
+        .stm32_frames_err        = g_stm32_frames_err,
+    };
+
+    FRAME frame = {
+        .start_byte  = PROTOCOL_START_BYTE,
+        .version     = PROTOCOL_VERSION,
+        .message_id  = MSG_ESP32_STATUS,
+        .sequence    = sequence,
+        .payload_len = sizeof(status),
+    };
+    memcpy(frame.payload, &status, sizeof(status));
+
+    uint8_t buffer[sizeof(FRAME)];
+    int encoded_len = protocol_frame_encode(buffer, sizeof(buffer), &frame);
+    if (encoded_len < 0) {
+        return;
+    }
+
+    send(client_sock, buffer, (size_t) encoded_len, 0);
+}
+
+static bool tcp_server_read_client(int client_sock, uint8_t *buffer) {
     uint8_t start_byte;
 
     if (recv(client_sock, &start_byte, 1, 0) <= 0) {
-        return BREAK;
+        return false;
     }
 
     if (start_byte != PROTOCOL_START_BYTE) {
-        return CONTINUE;
+        return true;
     }
-    
+
     buffer[0] = start_byte;
 
     if (recv_exact(client_sock, &buffer[1], 4) < 0) {
-        return BREAK;
+        return false;
     }
 
     uint8_t payload_len = buffer[4];
     if (payload_len > PAYLOAD_MAX_SIZE) {
-        return CONTINUE;
+        return true;
     }
 
     size_t remaining = (size_t) payload_len + sizeof(uint16_t);
     if (recv_exact(client_sock, &buffer[5], remaining) < 0) {
-        return BREAK;
+        return false;
     }
 
     FRAME frame;
     if (protocol_frame_decode(&frame, buffer, 5 + remaining) < 0) {
-        return CONTINUE;
+        return true;
+    }
+
+    if (frame.message_id == MSG_ESP32_STATUS) {
+        esp32_send_status(client_sock, frame.sequence);
+        return true;
     }
 
     STM32_CMD cmd = {
@@ -311,7 +361,7 @@ static TCP_CLIENT_STATUS tcp_server_read_client(int client_sock, uint8_t *buffer
     memcpy(cmd.payload, frame.payload, frame.payload_len);
     xQueueSend(g_cmd_queue, &cmd, 0);
 
-    return OK;
+    return true;
 }
 
 void tcp_server_task(void *pvParameters)
@@ -328,18 +378,7 @@ void tcp_server_task(void *pvParameters)
         xSemaphoreGive(g_client_sock_mutex);
 
         uint8_t buffer[sizeof(FRAME)];
-        bool client_connected = true;
-        while (client_connected) {
-            TCP_CLIENT_STATUS stat = tcp_server_read_client(client_sock, buffer);
-            switch (stat) {
-                case OK:
-                    break;
-                case CONTINUE:
-                    break;
-                case BREAK:
-                    client_connected = false;
-                    break;
-            }
+        while (tcp_server_read_client(client_sock, buffer)) {
         }
 
         xSemaphoreTake(g_client_sock_mutex, portMAX_DELAY);
@@ -421,6 +460,9 @@ static void crsf_unpack_channels(const uint8_t *payload, int16_t *channels)
         channels[channel] = (int16_t) value;
     }
 }
+
+//https://github.com/tbs-fpv/tbs-crsf-spec/blob/main/crsf.md
+//https://github.com/betaflight/betaflight/blob/master/src/main/rx/crsf.c
 
 // reference doc: https://github.com/tbs-fpv/tbs-crsf-spec/blob/main/crsf.md
 void crsf_to_stm32_task(void *pvParameters)

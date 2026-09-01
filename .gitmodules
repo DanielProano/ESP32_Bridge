@@ -1,3 +1,6 @@
 [submodule "Dragonfly_Protocol"]
 	path = Dragonfly_Protocol
 	url = git@github.com:DanielProano/Dragonfly_Protocol.git
+[submodule "u8g2"]
+	path = u8g2
+	url = https://github.com/olikraus/u8g2.git
