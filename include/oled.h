@@ -11,6 +11,7 @@
 #define OLED_I2C_ADDR    0x3C
 
 void oled_init(void);
+void oled_print(char *msg);
 void oled_show_frame(const FRAME *frame);
 void oled_error(const char *msg);
 

@@ -4,8 +4,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_rom_sys.h"
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+
+#define OLED_LOG_LINES    4
+#define OLED_LOG_LINE_LEN 24
+
+static char s_log_lines[OLED_LOG_LINES][OLED_LOG_LINE_LEN];
 
 static u8g2_t s_u8g2;
 static i2c_master_bus_handle_t s_bus;
@@ -94,31 +100,41 @@ void oled_init(void)
     u8g2_SendBuffer(&s_u8g2);
 }
 
-void oled_show_frame(const FRAME *frame)
-{
-    char line1[24];
-    char line2[24];
-
-    snprintf(line1, sizeof(line1), "MSG %u", frame->message_id);
-    snprintf(line2, sizeof(line2), "Seq %u", frame->sequence);
+void oled_print(char *msg) {
+    for (int i = 0; i < OLED_LOG_LINES - 1; i++) {
+        memcpy(s_log_lines[i], s_log_lines[i + 1], OLED_LOG_LINE_LEN);
+    }
+    snprintf(s_log_lines[OLED_LOG_LINES - 1], OLED_LOG_LINE_LEN, "%s", msg);
 
     u8g2_ClearBuffer(&s_u8g2);
     u8g2_SetFont(&s_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&s_u8g2, 0, 10, line1);
-    u8g2_DrawStr(&s_u8g2, 0, 24, line2);
+    for (int i = 0; i < OLED_LOG_LINES; i++) {
+        u8g2_DrawStr(&s_u8g2, 0, 10 + i * 12, s_log_lines[i]);
+    }
     u8g2_SendBuffer(&s_u8g2);
 }
 
-void oled_error(const char *msg) {
-    char line1[24];
-    char line2[24];
-
-    snprintf(line1, sizeof(line1), "ERROR");
-    snprintf(line2, sizeof(line2), "%s", msg);
+void oled_clear(void) {
+    for (int i = 0; i < OLED_LOG_LINES; i++) {
+        memset(s_log_lines[i], 0, OLED_LOG_LINE_LEN);
+    }
 
     u8g2_ClearBuffer(&s_u8g2);
-    u8g2_SetFont(&s_u8g2, u8g2_font_6x10_tf);
-    u8g2_DrawStr(&s_u8g2, 0, 10, line1);
-    u8g2_DrawStr(&s_u8g2, 0, 24, line2);
     u8g2_SendBuffer(&s_u8g2);
+}
+
+void oled_show_frame(const FRAME *frame)
+{
+    char buf[24];
+    
+    // Note, in worst case of 3 chars per int, 
+    // we use full 24 byte buffer
+    snprintf(buf, sizeof(buf), "FRAME: MSG %d, SEQ %d", frame->message_id, frame->sequence);
+    oled_print(buf);
+}
+
+void oled_error(const char *msg) {
+    char buf[24];
+    snprintf(buf, sizeof(buf), "ERR: %s", msg);
+    oled_print(buf);
 }

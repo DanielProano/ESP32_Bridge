@@ -7,6 +7,7 @@
 #include "esp_timer.h"
 #include "esp_system.h"
 #include "nvs_flash.h"
+#include <stdio.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -34,6 +35,7 @@ void wifi_init(void)
     // Init flash & if full, erase and write
     esp_err_t non_volatile_storage = nvs_flash_init();
     if (non_volatile_storage == ESP_ERR_NVS_NO_FREE_PAGES || non_volatile_storage == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        oled_error("Wifi NVS Full");
         ESP_ERROR_CHECK(nvs_flash_erase());
         non_volatile_storage = nvs_flash_init();
     }
@@ -66,6 +68,8 @@ void wifi_init(void)
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_AP, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
+
+    oled_print("Wifi Init Complete");
 }
 
 void uart_init_stm32(void)
@@ -87,6 +91,8 @@ void uart_init_stm32(void)
     ESP_ERROR_CHECK(uart_driver_install(STM32_UART, STM32_UART_BUF_SIZE, STM32_UART_BUF_SIZE, 0, NULL, 0));
 
     g_stm32_uart_mutex = xSemaphoreCreateMutex();
+
+    oled_print("UART-STM Init Complete");
 }
 
 void uart_init_crsf(void)
@@ -105,6 +111,8 @@ void uart_init_crsf(void)
     ESP_ERROR_CHECK(uart_driver_install(CRSF_UART, CRSF_UART_BUF_SIZE, 0, 0, NULL, 0));
 
     g_crsf_mutex = xSemaphoreCreateMutex();
+
+    oled_print("UART-CRSF Init Complete");
 }
 
 // if semaphore occupied and waits CRSF_MUTEX_TIMEOUT_MS
@@ -128,6 +136,7 @@ void bridge_to_stm32(uint8_t msg_id, const uint8_t *payload, uint8_t payload_len
     static uint8_t sequence = 0;
 
     if (payload_len > PAYLOAD_MAX_SIZE) {
+        oled_error("B2STM len > max");
         return;
     }
 
@@ -146,6 +155,7 @@ void bridge_to_stm32(uint8_t msg_id, const uint8_t *payload, uint8_t payload_len
     uint8_t buffer[sizeof(FRAME)];
     int encoded_len = protocol_frame_encode(buffer, sizeof(buffer), &frame);
     if (encoded_len < 0) {
+        oled_error("B2STM 0 buf len");
         return;
     }
 
@@ -167,6 +177,7 @@ void bridge_to_laptop(const FRAME *frame)
     uint8_t buffer[sizeof(FRAME)];
     int encoded_len = protocol_frame_encode(buffer, sizeof(buffer), frame);
     if (encoded_len < 0) {
+        oled_error("B2Lap 0 buf len");
         return;
     }
 
@@ -245,6 +256,7 @@ void stm32_to_laptop_task(void *pvParameters)
 static int tcp_server_setup(void) {
     int listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (listen_sock < 0) {
+        oled_error("TCP Deleted Tsk");
         vTaskDelete(NULL);
     }
 
@@ -258,10 +270,12 @@ static int tcp_server_setup(void) {
     };
 
     if (bind(listen_sock, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
+        oled_error("TCP Deleted Tsk");
         vTaskDelete(NULL);
     }
 
     if (listen(listen_sock, 1) < 0) {
+        oled_error("TCP Deleted Tsk");
         vTaskDelete(NULL);
     }
 
@@ -274,6 +288,7 @@ static int recv_exact(int sock, uint8_t *buffer, size_t len)
     while (received < len) {
         int n = recv(sock, &buffer[received], len - received, 0);
         if (n <= 0) {
+            oled_error("RECV 0 bytes");
             return -1;
         }
         received += (size_t) n;
@@ -283,6 +298,7 @@ static int recv_exact(int sock, uint8_t *buffer, size_t len)
 
 static void esp32_send_status(int client_sock, uint8_t sequence)
 {
+    ESP_LOGI("MAIN", "ESP32 Bridge starting");
     wifi_sta_list_t sta_list = {0};
     esp_wifi_ap_get_sta_list(&sta_list);
 
@@ -311,6 +327,7 @@ static void esp32_send_status(int client_sock, uint8_t sequence)
     uint8_t buffer[sizeof(FRAME)];
     int encoded_len = protocol_frame_encode(buffer, sizeof(buffer), &frame);
     if (encoded_len < 0) {
+        oled_error("ESP32 0 buf len");
         return;
     }
 
@@ -331,21 +348,25 @@ static bool tcp_server_read_client(int client_sock, uint8_t *buffer) {
     buffer[0] = start_byte;
 
     if (recv_exact(client_sock, &buffer[1], 4) < 0) {
+        oled_error("TCP_cl fail recv");
         return false;
     }
 
     uint8_t payload_len = buffer[4];
     if (payload_len > PAYLOAD_MAX_SIZE) {
+        oled_error("TCP_cl len > max");
         return true;
     }
 
     size_t remaining = (size_t) payload_len + sizeof(uint16_t);
     if (recv_exact(client_sock, &buffer[5], remaining) < 0) {
+        oled_error("TCP_cl recv fail");
         return false;
     }
 
     FRAME frame;
     if (protocol_frame_decode(&frame, buffer, 5 + remaining) < 0) {
+        oled_error("TCP_cl fail decode");
         return true;
     }
 
@@ -361,6 +382,10 @@ static bool tcp_server_read_client(int client_sock, uint8_t *buffer) {
     memcpy(cmd.payload, frame.payload, frame.payload_len);
     xQueueSend(g_cmd_queue, &cmd, 0);
 
+    char buf[24];
+    snprintf(buf, sizeof(buf), "TCP got CMD: %d", cmd.msg_id);
+    oled_print(buf);
+    
     return true;
 }
 
@@ -370,6 +395,7 @@ void tcp_server_task(void *pvParameters)
     while (1) {
         int client_sock = accept(listen_sock, NULL, NULL);
         if (client_sock < 0) {
+            oled_error("Client accept fail");
             continue;
         }
 
