@@ -9,9 +9,12 @@
 #define OLED_SCL_PIN     22
 #define OLED_I2C_CLK_HZ  400000
 #define OLED_I2C_ADDR    0x3C
+#define OLED_LOG_LINES    4
+#define OLED_LOG_LINE_LEN 24
 
 void oled_init(void);
 void oled_print(char *msg);
+void oled_clear(void);
 void oled_show_frame(const FRAME *frame);
 void oled_error(const char *msg);
 

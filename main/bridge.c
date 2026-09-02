@@ -1,5 +1,6 @@
 #include "bridge.h"
 #include "oled.h"
+#include "protocol.h"
 #include "protocol_codec.h"
 #include "esp_wifi.h"
 #include "esp_event.h"
@@ -249,7 +250,6 @@ void stm32_to_laptop_task(void *pvParameters)
         g_stm32_last_frame_ticks = xTaskGetTickCount();
 
         bridge_to_laptop(&frame);
-        oled_show_frame(&frame);
     }
 }
 
@@ -375,6 +375,48 @@ static bool tcp_server_read_client(int client_sock, uint8_t *buffer) {
         return true;
     }
 
+    if (frame.message_id == MSG_OLED) {
+        OLED_PAYLOAD payload;
+        memcpy(&payload, frame.payload, frame.payload_len);
+        switch (payload.cmd) {
+            case OLED_PRINT: {
+                static const char prefix[] = "GS: ";
+                size_t prefix_len = strlen(prefix);
+                size_t text_len = strnlen(payload.text, PAYLOAD_TEXT_SIZE);
+                size_t buf_cap = OLED_LOG_LINE_LEN - 1;
+
+                char buf[OLED_LOG_LINE_LEN];
+                size_t first_len = buf_cap - prefix_len;
+                if (first_len > text_len) {
+                    first_len = text_len;
+                }
+                memcpy(buf, prefix, prefix_len);
+                memcpy(buf + prefix_len, payload.text, first_len);
+                buf[prefix_len + first_len] = '\0';
+                oled_print(buf);
+
+                size_t offset = first_len;
+                while (offset < text_len) {
+                    size_t chunk_len = text_len - offset;
+                    if (chunk_len > buf_cap) {
+                        chunk_len = buf_cap;
+                    }
+                    memcpy(buf, payload.text + offset, chunk_len);
+                    buf[chunk_len] = '\0';
+                    oled_print(buf);
+                    offset += chunk_len;
+                }
+                break;
+            }
+            case OLED_CLEAR:
+                oled_clear();
+                break;
+            default:
+                break;
+        }
+        return true;
+    }
+
     STM32_CMD cmd = {
         .msg_id      = frame.message_id,
         .payload_len = frame.payload_len,
@@ -385,7 +427,7 @@ static bool tcp_server_read_client(int client_sock, uint8_t *buffer) {
     char buf[24];
     snprintf(buf, sizeof(buf), "TCP got CMD: %d", cmd.msg_id);
     oled_print(buf);
-    
+
     return true;
 }
 

@@ -4,12 +4,13 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_rom_sys.h"
+#include "esp_err.h"
+#include "esp_log.h"
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
-#define OLED_LOG_LINES    4
-#define OLED_LOG_LINE_LEN 24
+static const char *TAG = "oled";
 
 static char s_log_lines[OLED_LOG_LINES][OLED_LOG_LINE_LEN];
 
@@ -35,9 +36,13 @@ static uint8_t u8x8_byte_esp32_i2c(u8x8_t *u8x8, uint8_t msg, uint8_t arg_int, v
             s_tx_len += arg_int;
             break;
 
-        case U8X8_MSG_BYTE_END_TRANSFER:
-            i2c_master_transmit(s_dev, s_tx_buf, s_tx_len, 1000);
+        case U8X8_MSG_BYTE_END_TRANSFER: {
+            esp_err_t err = i2c_master_transmit(s_dev, s_tx_buf, s_tx_len, 1000);
+            if (err != ESP_OK) {
+                ESP_LOGW(TAG, "i2c_master_transmit failed: %s", esp_err_to_name(err));
+            }
             break;
+        }
 
         default:
             return 0;
@@ -57,14 +62,14 @@ static uint8_t u8x8_gpio_and_delay_esp32(u8x8_t *u8x8, uint8_t msg, uint8_t arg_
                 .glitch_ignore_cnt = 7,
                 .flags.enable_internal_pullup = true,
             };
-            i2c_new_master_bus(&bus_cfg, &s_bus);
+            ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &s_bus));
 
             i2c_device_config_t dev_cfg = {
                 .dev_addr_length = I2C_ADDR_BIT_LEN_7,
                 .device_address = OLED_I2C_ADDR,
                 .scl_speed_hz = OLED_I2C_CLK_HZ,
             };
-            i2c_master_bus_add_device(s_bus, &dev_cfg, &s_dev);
+            ESP_ERROR_CHECK(i2c_master_bus_add_device(s_bus, &dev_cfg, &s_dev));
             break;
         }
 
