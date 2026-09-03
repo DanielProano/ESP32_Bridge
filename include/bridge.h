@@ -31,12 +31,6 @@
 #define QUEUE_TO_STM32_TASK_PRIORITY  4
 #define TCP_SERVER_TASK_PRIORITY      3
 
-typedef struct {
-    uint8_t msg_id;
-    uint8_t payload_len;
-    uint8_t payload[PAYLOAD_MAX_SIZE];
-} STM32_CMD;
-
 extern int g_client_sock;
 extern QueueHandle_t g_cmd_queue;
 extern SemaphoreHandle_t g_client_sock_mutex;

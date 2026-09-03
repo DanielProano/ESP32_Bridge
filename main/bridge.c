@@ -148,10 +148,10 @@ void bridge_to_laptop(const FRAME *frame)
 
 void queue_to_stm32_task(void *pvParameters)
 {
-    STM32_CMD cmd;
+    FRAME frame;
     while (1) {
-        if (xQueueReceive(g_cmd_queue, &cmd, portMAX_DELAY) == pdTRUE) {
-            bridge_to_stm32(cmd.msg_id, cmd.payload, cmd.payload_len);
+        if (xQueueReceive(g_cmd_queue, &frame, portMAX_DELAY) == pdTRUE) {
+            bridge_to_stm32(frame.message_id, frame.payload, frame.payload_len);
         }
     }
 }
@@ -370,15 +370,10 @@ static bool tcp_server_read_client(int client_sock, uint8_t *buffer) {
         return true;
     }
 
-    STM32_CMD cmd = {
-        .msg_id      = frame.message_id,
-        .payload_len = frame.payload_len,
-    };
-    memcpy(cmd.payload, frame.payload, frame.payload_len);
-    xQueueSend(g_cmd_queue, &cmd, 0);
+    xQueueSend(g_cmd_queue, &frame, 0);
 
     char buf[24];
-    snprintf(buf, sizeof(buf), "TCP got CMD: %d", cmd.msg_id);
+    snprintf(buf, sizeof(buf), "TCP got CMD: %d", frame.message_id);
     oled_print(buf);
 
     return true;
