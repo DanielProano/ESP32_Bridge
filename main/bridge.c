@@ -90,10 +90,8 @@ void uart_init_stm32(void)
     oled_print("UART-STM Init Complete");
 }
 
-void bridge_to_stm32(uint8_t msg_id, const uint8_t *payload, uint8_t payload_len)
+void bridge_to_stm32(uint8_t msg_id, const uint8_t *payload, uint8_t payload_len, uint8_t sequence)
 {
-    static uint8_t sequence = 0;
-
     if (payload_len > PAYLOAD_MAX_SIZE) {
         oled_error("B2STM len > max");
         return;
@@ -103,7 +101,7 @@ void bridge_to_stm32(uint8_t msg_id, const uint8_t *payload, uint8_t payload_len
         .start_byte  = PROTOCOL_START_BYTE,
         .version     = PROTOCOL_VERSION,
         .message_id  = msg_id,
-        .sequence    = sequence++,
+        .sequence    = sequence,
         .payload_len = payload_len,
     };
 
@@ -151,7 +149,7 @@ void queue_to_stm32_task(void *pvParameters)
     FRAME frame;
     while (1) {
         if (xQueueReceive(g_cmd_queue, &frame, portMAX_DELAY) == pdTRUE) {
-            bridge_to_stm32(frame.message_id, frame.payload, frame.payload_len);
+            bridge_to_stm32(frame.message_id, frame.payload, frame.payload_len, frame.sequence);
         }
     }
 }
@@ -287,6 +285,31 @@ static void esp32_send_status(int client_sock, uint8_t sequence)
     send(client_sock, buffer, (size_t) encoded_len, 0);
 }
 
+static void esp32_send_ack(int client_sock, uint8_t sequence)
+{
+    ACK_PAYLOAD ack = {
+        .ack_seq = sequence,
+    };
+
+    FRAME frame = {
+        .start_byte  = PROTOCOL_START_BYTE,
+        .version     = PROTOCOL_VERSION,
+        .message_id  = MSG_ACK,
+        .sequence    = sequence,
+        .payload_len = sizeof(ack),
+    };
+    memcpy(frame.payload, &ack, sizeof(ack));
+
+    uint8_t buffer[sizeof(FRAME)];
+    int encoded_len = protocol_frame_encode(buffer, sizeof(buffer), &frame);
+    if (encoded_len < 0) {
+        oled_error("ACK 0 buf len");
+        return;
+    }
+
+    send(client_sock, buffer, (size_t) encoded_len, 0);
+}
+
 static bool tcp_server_read_client(int client_sock, uint8_t *buffer) {
     uint8_t start_byte;
 
@@ -367,6 +390,7 @@ static bool tcp_server_read_client(int client_sock, uint8_t *buffer) {
             default:
                 break;
         }
+        esp32_send_ack(client_sock, frame.sequence);
         return true;
     }
 
