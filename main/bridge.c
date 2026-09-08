@@ -1,4 +1,5 @@
 #include "bridge.h"
+#include "hal/uart_types.h"
 #include "oled.h"
 #include "protocol.h"
 #include "protocol_codec.h"
@@ -17,7 +18,6 @@
 
 int g_client_sock = -1;
 QueueHandle_t g_cmd_queue = NULL;
-SemaphoreHandle_t g_stm32_uart_mutex = NULL;
 SemaphoreHandle_t g_client_sock_mutex = NULL;
 
 static volatile uint32_t g_stm32_frames_ok = 0;
@@ -85,8 +85,6 @@ void uart_init_stm32(void)
     ESP_ERROR_CHECK(uart_set_pin(STM32_UART, STM32_TX_PIN, STM32_RX_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
     ESP_ERROR_CHECK(uart_driver_install(STM32_UART, STM32_UART_BUF_SIZE, STM32_UART_BUF_SIZE, 0, NULL, 0));
 
-    g_stm32_uart_mutex = xSemaphoreCreateMutex();
-
     oled_print("UART-STM Init Complete");
 }
 
@@ -116,12 +114,8 @@ void bridge_to_stm32(uint8_t msg_id, const uint8_t *payload, uint8_t payload_len
         return;
     }
 
-    if (xSemaphoreTake(g_stm32_uart_mutex, pdMS_TO_TICKS(STM32_UART_MUTEX_TIMEOUT_MS)) != pdTRUE) {
-        return;
-    }
-
     uart_write_bytes(STM32_UART, buffer, (size_t) encoded_len);
-    xSemaphoreGive(g_stm32_uart_mutex);
+    oled_show_frame(&frame);
 }
 
 void bridge_to_laptop(const FRAME *frame)
@@ -129,7 +123,7 @@ void bridge_to_laptop(const FRAME *frame)
     uint8_t buffer[sizeof(FRAME)];
     int encoded_len = protocol_frame_encode(buffer, sizeof(buffer), frame);
     if (encoded_len < 0) {
-        oled_error("B2Lap 0 buf len");
+        oled_error("B2Laptop empty buffer");
         return;
     }
 
@@ -149,6 +143,7 @@ void queue_to_stm32_task(void *pvParameters)
     FRAME frame;
     while (1) {
         if (xQueueReceive(g_cmd_queue, &frame, portMAX_DELAY) == pdTRUE) {
+            oled_print("Entered queue2stm32 task");
             bridge_to_stm32(frame.message_id, frame.payload, frame.payload_len, frame.sequence);
         }
     }
@@ -174,6 +169,7 @@ void stm32_to_laptop_task(void *pvParameters)
 
         if (uart_read_bytes(STM32_UART, &buffer[1], header_info, pdMS_TO_TICKS(STM32_UART_READ_TIMEOUT_MS)) != 4) {
             g_stm32_frames_err++;
+            oled_error("STM hdr timeout");
             continue;
         }
 
@@ -181,12 +177,14 @@ void stm32_to_laptop_task(void *pvParameters)
 
         if (payload_len > PAYLOAD_MAX_SIZE) {
             g_stm32_frames_err++;
+            oled_error("STM len > max");
             continue;
         }
 
         size_t remaining = (size_t) payload_len + sizeof(uint16_t);
         if (uart_read_bytes(STM32_UART, &buffer[5], remaining, pdMS_TO_TICKS(STM32_UART_READ_TIMEOUT_MS)) != (int) remaining) {
             g_stm32_frames_err++;
+            oled_error("STM payload timeout");
             continue;
         }
 
@@ -194,12 +192,14 @@ void stm32_to_laptop_task(void *pvParameters)
 
         if (protocol_frame_decode(&frame, buffer, sizeof(uint8_t) + header_info + remaining) < 0) {
             g_stm32_frames_err++;
+            oled_error("STM fail decode");
             continue;
         }
 
         g_stm32_frames_ok++;
         g_stm32_last_frame_ticks = xTaskGetTickCount();
 
+        oled_print("stm32 2 laptop success");
         bridge_to_laptop(&frame);
     }
 }

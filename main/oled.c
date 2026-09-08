@@ -3,6 +3,7 @@
 #include "driver/i2c_master.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "esp_rom_sys.h"
 #include "esp_err.h"
 #include "esp_log.h"
@@ -19,6 +20,7 @@ static i2c_master_bus_handle_t s_bus;
 static i2c_master_dev_handle_t s_dev;
 static uint8_t s_tx_buf[32];
 static uint16_t s_tx_len;
+static SemaphoreHandle_t s_oled_mutex;
 
 static uint8_t u8x8_byte_esp32_i2c(u8x8_t *u8x8, uint8_t msg, uint8_t arg_int, void *arg_ptr)
 {
@@ -98,6 +100,8 @@ static uint8_t u8x8_gpio_and_delay_esp32(u8x8_t *u8x8, uint8_t msg, uint8_t arg_
 
 void oled_init(void)
 {
+    s_oled_mutex = xSemaphoreCreateMutex();
+
     u8g2_Setup_ssd1306_i2c_128x64_noname_f(&s_u8g2, U8G2_R0, u8x8_byte_esp32_i2c, u8x8_gpio_and_delay_esp32);
     u8g2_InitDisplay(&s_u8g2);
     u8g2_SetPowerSave(&s_u8g2, 0);
@@ -106,6 +110,8 @@ void oled_init(void)
 }
 
 void oled_print(char *msg) {
+    xSemaphoreTake(s_oled_mutex, portMAX_DELAY);
+
     for (int i = 0; i < OLED_LOG_LINES - 1; i++) {
         memcpy(s_log_lines[i], s_log_lines[i + 1], OLED_LOG_LINE_LEN);
     }
@@ -117,15 +123,21 @@ void oled_print(char *msg) {
         u8g2_DrawStr(&s_u8g2, 0, 10 + i * 12, s_log_lines[i]);
     }
     u8g2_SendBuffer(&s_u8g2);
+
+    xSemaphoreGive(s_oled_mutex);
 }
 
 void oled_clear(void) {
+    xSemaphoreTake(s_oled_mutex, portMAX_DELAY);
+
     for (int i = 0; i < OLED_LOG_LINES; i++) {
         memset(s_log_lines[i], 0, OLED_LOG_LINE_LEN);
     }
 
     u8g2_ClearBuffer(&s_u8g2);
     u8g2_SendBuffer(&s_u8g2);
+
+    xSemaphoreGive(s_oled_mutex);
 }
 
 void oled_show_frame(const FRAME *frame)

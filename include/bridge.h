@@ -12,7 +12,7 @@
 #define STM32_UART      UART_NUM_1
 #define STM32_TX_PIN    17
 #define STM32_RX_PIN    16
-#define STM32_BAUD      921600
+#define STM32_BAUD      230400
 #define STM32_UART_BUF_SIZE 512
 
 #define TCP_PORT        8080
@@ -21,7 +21,6 @@
 
 #define LAPTOP_QUEUE_DEPTH       4
 #define STM32_LINK_TIMEOUT_MS    1000
-#define STM32_UART_MUTEX_TIMEOUT_MS 10
 #define CLIENT_SOCK_MUTEX_TIMEOUT_MS 10
 #define STM32_UART_READ_TIMEOUT_MS   50
 
@@ -34,7 +33,6 @@
 extern int g_client_sock;
 extern QueueHandle_t g_cmd_queue;
 extern SemaphoreHandle_t g_client_sock_mutex;
-extern SemaphoreHandle_t g_stm32_uart_mutex;
 
 void wifi_init(void);
 void uart_init_stm32(void);
