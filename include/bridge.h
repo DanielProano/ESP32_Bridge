@@ -9,11 +9,15 @@
 #include "driver/uart.h"
 #include <stdint.h>
 
-#define STM32_UART      UART_NUM_1
-#define STM32_TX_PIN    17
-#define STM32_RX_PIN    16
+#define STM32_UART      UART_NUM_2
+#define STM32_TX_PIN    26
+#define STM32_RX_PIN    25
 #define STM32_BAUD      230400
 #define STM32_UART_BUF_SIZE 512
+
+#define TF_LUNA_UART    UART_NUM_1
+#define TF_LUNA_TX_PIN  18
+#define TF_LUNA_RX_PIN  19
 
 #define TCP_PORT        8080
 #define WIFI_SSID       "Dragonfly"
