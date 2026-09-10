@@ -5,6 +5,11 @@ for my autonomous drone, taking in outside telem,
 commands, and instructions over Wi-Fi & Radio
 before forwarding them to my STM32 flight controller 
 
+## Wiring Diagram
+
+<img width="1333" height="1652" alt="image" src="https://github.com/user-attachments/assets/c6bd0fb7-2364-4440-baf1-918c294a851b" />
+
+
 ## Startup 
 
 ```bash 
