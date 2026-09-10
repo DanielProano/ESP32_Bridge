@@ -16,7 +16,7 @@ void app_main(void)
     wifi_init();
     uart_init_stm32();
 
-    g_cmd_queue = xQueueCreate(LAPTOP_QUEUE_DEPTH, sizeof(FRAME));
+    g_cmd_queue = xQueueCreate(LAPTOP_QUEUE_DEPTH, sizeof(frame));
     g_client_sock_mutex = xSemaphoreCreateMutex();
 
     xTaskCreate(stm32_to_laptop_task, "stm32_to_laptop", BRIDGE_TASK_STACK_SIZE, NULL, STM32_TO_LAPTOP_TASK_PRIORITY, NULL);

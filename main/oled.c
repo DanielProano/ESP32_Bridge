@@ -140,7 +140,7 @@ void oled_clear(void) {
     xSemaphoreGive(s_oled_mutex);
 }
 
-void oled_show_frame(const FRAME *frame)
+void oled_show_frame(const frame *frame)
 {
     char buf[24];
     

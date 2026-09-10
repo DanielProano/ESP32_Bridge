@@ -44,6 +44,6 @@ void tcp_server_task(void *pvParameters);
 void queue_to_stm32_task(void *pvParameters);
 void stm32_to_laptop_task(void *pvParameters);
 void bridge_to_stm32(uint8_t msg_id, const uint8_t *payload, uint8_t payload_len, uint8_t sequence);
-void bridge_to_laptop(const FRAME *frame);
+void bridge_to_laptop(const frame *frame);
 
 #endif

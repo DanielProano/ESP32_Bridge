@@ -95,7 +95,7 @@ void bridge_to_stm32(uint8_t msg_id, const uint8_t *payload, uint8_t payload_len
         return;
     }
 
-    FRAME frame = {
+    frame frame = {
         .start_byte  = PROTOCOL_START_BYTE,
         .version     = PROTOCOL_VERSION,
         .message_id  = msg_id,
@@ -107,7 +107,7 @@ void bridge_to_stm32(uint8_t msg_id, const uint8_t *payload, uint8_t payload_len
         memcpy(frame.payload, payload, payload_len);
     }
 
-    uint8_t buffer[sizeof(FRAME)];
+    uint8_t buffer[sizeof(frame)];
     int encoded_len = protocol_frame_encode(buffer, sizeof(buffer), &frame);
     if (encoded_len < 0) {
         oled_error("B2STM 0 buf len");
@@ -118,9 +118,9 @@ void bridge_to_stm32(uint8_t msg_id, const uint8_t *payload, uint8_t payload_len
     oled_show_frame(&frame);
 }
 
-void bridge_to_laptop(const FRAME *frame)
+void bridge_to_laptop(const frame *frame)
 {
-    uint8_t buffer[sizeof(FRAME)];
+    uint8_t buffer[sizeof(*frame)];
     int encoded_len = protocol_frame_encode(buffer, sizeof(buffer), frame);
     if (encoded_len < 0) {
         oled_error("B2Laptop empty buffer");
@@ -140,7 +140,7 @@ void bridge_to_laptop(const FRAME *frame)
 
 void queue_to_stm32_task(void *pvParameters)
 {
-    FRAME frame;
+    frame frame;
     while (1) {
         if (xQueueReceive(g_cmd_queue, &frame, portMAX_DELAY) == pdTRUE) {
             oled_print("Entered queue2stm32 task");
@@ -151,7 +151,7 @@ void queue_to_stm32_task(void *pvParameters)
 
 void stm32_to_laptop_task(void *pvParameters)
 {
-    uint8_t buffer[sizeof(FRAME)];
+    uint8_t buffer[sizeof(frame)];
 
     while (1) {
         uint8_t start_byte;
@@ -188,7 +188,7 @@ void stm32_to_laptop_task(void *pvParameters)
             continue;
         }
 
-        FRAME frame;
+        frame frame;
 
         if (protocol_frame_decode(&frame, buffer, sizeof(uint8_t) + header_info + remaining) < 0) {
             g_stm32_frames_err++;
@@ -256,7 +256,7 @@ static void esp32_send_status(int client_sock, uint8_t sequence)
     TickType_t now = xTaskGetTickCount();
     uint32_t frame_age_ms = (uint32_t) ((now - g_stm32_last_frame_ticks) * portTICK_PERIOD_MS);
 
-    ESP32_STATUS_PAYLOAD status = {
+    esp32_status_payload status = {
         .uptime_ms               = (uint32_t) (esp_timer_get_time() / 1000),
         .free_heap_bytes         = esp_get_free_heap_size(),
         .wifi_client_count       = (uint8_t) sta_list.num,
@@ -266,7 +266,7 @@ static void esp32_send_status(int client_sock, uint8_t sequence)
         .stm32_frames_err        = g_stm32_frames_err,
     };
 
-    FRAME frame = {
+    frame frame = {
         .start_byte  = PROTOCOL_START_BYTE,
         .version     = PROTOCOL_VERSION,
         .message_id  = MSG_ESP32_STATUS,
@@ -275,7 +275,7 @@ static void esp32_send_status(int client_sock, uint8_t sequence)
     };
     memcpy(frame.payload, &status, sizeof(status));
 
-    uint8_t buffer[sizeof(FRAME)];
+    uint8_t buffer[sizeof(frame)];
     int encoded_len = protocol_frame_encode(buffer, sizeof(buffer), &frame);
     if (encoded_len < 0) {
         oled_error("ESP32 0 buf len");
@@ -287,11 +287,11 @@ static void esp32_send_status(int client_sock, uint8_t sequence)
 
 static void esp32_send_ack(int client_sock, uint8_t sequence)
 {
-    ACK_PAYLOAD ack = {
+    ack_payload ack = {
         .ack_seq = sequence,
     };
 
-    FRAME frame = {
+    frame frame = {
         .start_byte  = PROTOCOL_START_BYTE,
         .version     = PROTOCOL_VERSION,
         .message_id  = MSG_ACK,
@@ -300,7 +300,7 @@ static void esp32_send_ack(int client_sock, uint8_t sequence)
     };
     memcpy(frame.payload, &ack, sizeof(ack));
 
-    uint8_t buffer[sizeof(FRAME)];
+    uint8_t buffer[sizeof(frame)];
     int encoded_len = protocol_frame_encode(buffer, sizeof(buffer), &frame);
     if (encoded_len < 0) {
         oled_error("ACK 0 buf len");
@@ -340,7 +340,7 @@ static bool tcp_server_read_client(int client_sock, uint8_t *buffer) {
         return false;
     }
 
-    FRAME frame;
+    frame frame;
     if (protocol_frame_decode(&frame, buffer, 5 + remaining) < 0) {
         oled_error("TCP_cl fail decode");
         return true;
@@ -352,7 +352,7 @@ static bool tcp_server_read_client(int client_sock, uint8_t *buffer) {
     }
 
     if (frame.message_id == MSG_OLED) {
-        OLED_PAYLOAD payload;
+        oled_payload payload;
         memcpy(&payload, frame.payload, frame.payload_len);
         switch (payload.cmd) {
             case OLED_PRINT: {
@@ -417,7 +417,7 @@ void tcp_server_task(void *pvParameters)
         g_client_sock = client_sock;
         xSemaphoreGive(g_client_sock_mutex);
 
-        uint8_t buffer[sizeof(FRAME)];
+        uint8_t buffer[sizeof(frame)];
         while (tcp_server_read_client(client_sock, buffer)) {
         }
 

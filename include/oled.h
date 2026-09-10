@@ -15,7 +15,7 @@
 void oled_init(void);
 void oled_print(char *msg);
 void oled_clear(void);
-void oled_show_frame(const FRAME *frame);
+void oled_show_frame(const frame *frame);
 void oled_error(const char *msg);
 
 #endif
