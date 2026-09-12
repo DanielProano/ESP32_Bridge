@@ -23,3 +23,7 @@ idf.py -p <port> flash monitor
 ## PINOUT 
 
 https://mischianti.org/esp32-nodemcu-32s-esp-32s-kit-high-resolution-pinout-datasheet-and-specs/
+
+## LIDAR docs
+
+https://en.benewake.com/uploadfiles/2024/04/20240426135946148.pdf
